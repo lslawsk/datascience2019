@@ -23,7 +23,7 @@ mean(gapminder[gapminder$continent == "Africa", "gdpPercap"])
 # attributes in gapminder
 colnames(gapminder)
 
-# select use
+# select() use
 # select three attributes
 subset_1 <- gapminder %>%
   select(country, continent, lifeExp)
@@ -36,7 +36,7 @@ subset_3 <- gapminder %>%
   select(country, population = pop, lifeExp, gdp = gdpPercap)
 str(subset_3)
 
-# filter use
+# filter() use
 africa <- gapminder %>% 
   filter(continent == "Africa") %>% 
   select(country, population = pop, lifeExp)
@@ -54,3 +54,61 @@ View(africa_countryList)
 europe <- gapminder %>% 
   filter(continent == "Europe") %>% 
   select(country, year, population = pop)
+
+# group() and summarize() use
+str(gapminder %>% group_by(continent)) # what do you see? group_by treats dataframe as bins
+
+#summarize gdp by continent
+gdp_continent <- gapminder %>% 
+  group_by(continent) %>% 
+  summarize(mean_gdp = mean(gdpPercap),
+            mean_life = mean(lifeExp))
+View(gdp_continent)
+
+library(ggplot2)
+summary_plot <- gdp_continent %>% 
+  ggplot(aes(x = mean_gdp, y = mean_life, label = continent)) +
+  geom_point(stat = "identity") + geom_text(aes(label = continent),hjust=0, vjust=-0.5)
+  theme_bw()
+summary_plot
+
+# mean pop for continents
+pop_continent <- gapminder %>% 
+  group_by(continent) %>% 
+  summarize(mean_pop = mean(pop))
+
+# count() use
+# display how many counts of entries for the year (i.e. how many countries)
+# use two equal signs == for search or comparison. one = is argument assignment or formula
+gapminder %>% 
+  filter(year == 2002) %>% 
+  count(continent, sort = TRUE)
+
+# n() use
+# standard error for each continent but don't know how many obs within each there are
+# n auto solves for the number of obs within each group
+gapminder %>% 
+  group_by(continent) %>% 
+  summarize(se = sd(lifeExp)/sqrt(n()))
+
+# mutate() use
+# adds column for every observation into environment
+xy <- data.frame(x = rnorm(100),
+                 y = rnorm(100))
+head(xy) # generates random numbers based on above
+# adding to original data frame in HERE not in raw data
+xyz <- xy %>%
+  mutate(z = x * y)
+head(xyz)
+# add column for full gdp per continent, then sum by continent. Try to nest though.
+fullgdp <- gapminder %>% 
+  mutate(full_gdp = pop * gdpPercap)
+head(fullgdp)
+
+gdp_perCont <- gapminder %>% 
+  mutate(full_gdp = pop * gdpPercap) %>% 
+  group_by(continent) %>% 
+  summarize(full_gdp_Cont = sum(full_gdp))
+gdp_perCont
+
+
