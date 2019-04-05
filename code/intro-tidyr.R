@@ -37,4 +37,22 @@ fac_lengths <- bikenet_2 %>%
   group_by(year, facility) %>% 
   summarize(meters = sum(length_m)) %>% 
   mutate(miles = meters / 1609)
-fac_lengths  
+fac_lengths
+
+# intro to graphing in ggplot2 as opposed to base r
+plot <- ggplot(fac_lengths, aes(year, miles,
+              group = facility,
+              color = facility)) # data, coordinate frame, how to rep on graph
+plot + geom_line()
+plot + geom_point()
+plot + geom_line() + scale_y_log10()
+plot + geom_line() + labs(title = "Change in PDX Bikenet Facilities",
+                          subtitle = "2008-2013",
+                          caption = "source: Portland Metro") +
+  xlab("Year") + ylab("Total Miles")
+
+# new and separate plots
+plot_2 <- ggplot(fac_lengths, aes(year, miles,
+                                group = facility))
+plot_2 + geom_line(size = 1, color = "blue") +
+  facet_wrap( ~ facility)
