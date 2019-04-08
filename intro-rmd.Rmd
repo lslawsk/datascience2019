@@ -1,0 +1,49 @@
+---
+title: "Intro to RMarkdown"
+author: L. Slawsky
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(lubridate)
+library(ggplot2)
+```
+
+## **Purpose**
+Demonstrate how to use RMarkdown using Biketown data as an example. Will make a few plots, show some code, and play with formatting.
+```{r biketown, echo = FALSE}
+bike_1807 <- read.csv("data/biketown/2018_07.csv", stringsAsFactors = F)
+mean_by_plan <- bike_1807 %>% 
+  group_by(PaymentPlan) %>% 
+  summarize(mean_mi = mean(Distance_Miles))
+
+plot1 <- ggplot(mean_by_plan, aes(PaymentPlan, mean_mi,
+                                  fill = PaymentPlan)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Average Biketown Ride Distance by Payment Plan Type",
+       subtitle = "July 2018",
+       caption = "source: Biketown") +
+  xlab("Payment Plan") + ylab("Average Miles") +
+  theme_bw()
+plot1
+
+mean_by <- bike_1807 %>% 
+  group_by(PaymentPlan, MultipleRental) %>% 
+  summarize(mean_mi2 = mean(Distance_Miles))
+
+plot2 <- ggplot(mean_by, aes(PaymentPlan, mean_mi2,
+                             group_by(MultipleRental),
+                             fill = MultipleRental)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Average Biketown Ride Distance by Payment Plan Type Breakout",
+       subtitle = "July 2018",
+       caption = "source: Biketown") +
+  xlab("Payment Plan") + ylab("Average Miles") +
+  theme_bw()
+plot2
+
+```
+
+
