@@ -1,0 +1,107 @@
+---
+title: "Working with Dates and Regex"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(lubridate)
+library(dplyr)
+library(ggplot2)
+```
+
+## Purpose
+Explore Biketown data looking at the mean miles traveled per week during the summer of 2018.
+
+```{r pull_data}
+source("code/fetch_biketown.R")
+get_data(start = "06/2018", end = "09/2018")
+
+setwd("/Users/lslawsk/Documents/RTraining/datascience2019/data/biketown/")
+
+folder <- "/Users/lslawsk/Documents/RTraining/datascience2019/data/biketown/"
+filenames <- list.files(path = folder, pattern = ".csv", all.files = FALSE,
+                        full.names = FALSE,
+                        recursive = FALSE, ignore.case = FALSE)
+
+read_csv_filename <- function(filenames){
+  ret <- read.csv(filenames, stringsAsFactors = F,
+                  strip.white = T, na.strings = "")
+  ret$Source <- filenames
+  ret
+}
+bike_raw <- plyr::ldply(filenames, read_csv_filename)
+
+#### if doesn't work then just call in one file at a time
+# file1 <- read.csv("/Users/lslawsk/Documents/RTraining/datascience2019/data/biketown/2018_06.csv",
+# stringsAsFactors = F)
+# bike_raw2 <- bindrows(file1)
+
+```
+
+```{r data_wrangling}
+str(bike_raw)
+
+bike_df1 <- bike_raw %>% 
+  mutate(start.datetime = paste(StartDate, StartTime, sep = " "),
+         end.datetime = paste(EndDate, EndTime, sep = " "))
+str(bike_df1)
+
+# convert chr format of last 2 columns to date-time format
+# !!!!make sure to include timezone!!!!
+# check acceptable timezone values
+OlsonNames()
+bike_df1$start.datetime <- mdy_hm(bike_df1$start.datetime,
+                                  tz = "America/Los_Angeles")
+bike_df1$end.datetime <- mdy_hm(bike_df1$end.datetime,
+                                tz = "America/Los_Angeles")
+str(bike_df1)
+
+# convert duration into usable format
+bike_df1$Duration <- hms(bike_df1$Duration)
+# error thrown after convert indicating NAs; check raw data
+sum(is.na(bike_df1$Duration))
+```
+
+'lubridate' has three synonymous functions but they define very different actions:
+1. duration(): time spans are in units of seconds, and there is no start date involved.
+2. interval(): also measured in units of seconds, and provides the difference between start and end.
+3. period)(): measures time span in units larger than seconds; this is handy when accounting for daylight saving time and leap years.
+
+``` {r duration_calc}
+# calculate interval
+bike_df1$interval <- interval(bike_df1$start.datetime, bike_df1$end.datetime)
+head(bike_df1$interval)
+
+# calculate duration. Must convert to interval first
+bike_df1$duration.all <- as.duration(bike_df1$interval)
+head(bike_df1$duration.all)
+
+# calculate period
+bike_df1$period <- as.period(bike_df1$duration.all)
+head(bike_df1$period)
+
+# floor_date() is helpful for aggregating
+bike_wkagg <- bike_df1 %>% 
+  mutate(week.datetime = floor_date(start.datetime, unit = "week"))
+head(bike_wkagg$week.datetime)
+
+# calculate mean distance traveled per week
+mean_wkdist <- bike_wkagg %>% 
+  filter(Source %in% c("2018_06.csv","2018_07.csv","2018_08.csv","2018_09.csv")) %>% 
+  group_by(week.datetime) %>% 
+  summarize(wk_mean_dist = mean(Distance_Miles))
+
+plot1 <- ggplot(mean_wkdist, aes(as.Date(week.datetime), wk_mean_dist)) +
+  geom_bar(stat = "identity", fill = "orange") +
+  labs(title = "Average Biketown Ride Distance by Week",
+       subtitle = "July-Sept 2018",
+       caption = "source: Biketown") +
+  xlab("Week Of") + ylab("Average Miles") +
+  scale_x_date(date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  theme_bw()
+plot1
+
+```
