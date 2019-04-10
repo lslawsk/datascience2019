@@ -1,0 +1,164 @@
+---
+title: "Working with Spatial Data"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(dplyr)
+library(tidyr)
+# install.packages("sf")
+library(sf)
+# install.packages("lwgeom")
+library(lwgeom)
+# install.packages("tidycensus")
+library(tidycensus)
+library(ggplot2)
+# install.packages("ggsn")
+library(ggsn)
+# install.packages("mapview")
+library(mapview)
+```
+
+# working with spatial data
+
+```{r tidycensus}
+# this loads api key for the session
+# pulls in census data for use in this session but doesn't save anywhere
+# !! DO NOT COMMIT/push with API key !!
+census_api_key("insertAPIkeyhere") # API key in email; do not commit with key here in code
+
+v17 <- load_variables(2017, "acs5", cache = T) # from tidycensus
+pdx_tracts_raw <- get_acs(geography = "tract", # clean version to go back to if needed
+                         year = 2017,
+                         variables = c("B19013_001", # median income
+                                       "B03002_003", # white non-hispanic
+                                       "B01003_001"), # pop
+                         state = "OR",
+                         county = c("Multnomah County"),
+                         geometry = TRUE) %>% 
+  select(GEOID, variable, estimate, geometry)
+head(pdx_tracts_raw)
+
+```
+
+```{r tidycensus tidy}
+# spread to clean up data for our purposes
+pdx_tracts <- pdx_tracts_raw %>% 
+  spread(key = variable, value = estimate) %>% 
+  rename(medinc = B19013_001, white = B03002_003, pop = B01003_001) %>% 
+  mutate(nonwhite = (pop - white) / pop,
+         area = st_area(geometry)) # area will have units
+
+pdx_tracts_p <- st_transform(pdx_tracts, # project the geographic data to local coord sys
+                             crs = 2838) %>%  # can look up what code you need
+  mutate(area = st_area(geometry)) # recalc area
+
+plot(pdx_tracts_p) # for quick visual check, like head() for tables
+
+# exclude over 100,000,000 sq m to get rid of large areas in projected layer for more zoom in
+pdx_tracts_p %>% 
+  arrange(desc(area))
+pdx_tracts_p <- pdx_tracts_p %>% 
+  filter(area < units::as_units(1e8, "m^2"))
+
+# work with ggplot
+p1 <- pdx_tracts_p %>% 
+  ggplot()
+p1 + geom_sf(aes(fill = medinc), color = "white") +
+  coord_sf(datum = st_crs(4326)) + # 2838 for local coord; can also do a crude zoom with xlim and ylim
+  scale_fill_viridis_c(option = "plasma",
+                       direction = -1) +
+#  blank() +
+  ggsn::north(pdx_tracts_p, symbol = 3, scale = 0.15) +
+  ggsn::scalebar(pdx_tracts_p, dist = 4, dist_unit = "km",
+                 transform = FALSE,
+                 st.size = 3) +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank())
+
+```
+
+```{r load biketown data}
+source("code/fetch_biketown.R")
+outdir <- "data/biketown/"
+biketown <- get_data(start = "01/2018",
+                     end = "12/2018",
+                     outdir = "data/biketown/")
+
+# stitch files together
+biketown_2018 <- paste0(outdir, list.files(outdir)) %>% 
+  lapply(read.csv, stringsAsFactors = F) %>% 
+  bind_rows()
+
+# can write out stitched file
+# write.csv(biketown_2018, "biketown_2018.csv")
+
+head(biketown_2018)
+# for shapefiles, just use sf::read_sf()
+hubs_start_sf <- biketown_2018 %>% 
+  group_by(StartHub) %>% 
+  summarize(lat = mean(StartLatitude),
+            lng = mean(StartLongitude),
+            starts = n()) %>% # total num of trip starts associated with that hub
+  filter(!is.na(lat) & !is.na(lng)) %>%
+  st_as_sf(coords = c("lng", "lat"),
+           crs = 4326, agr = "constant")
+
+m_start <- mapview(hubs_start_sf, zcol = "starts", # if basemap doesn't show, open in browser
+        legend = FALSE, cex = "starts") # cex for relative sizing of markers
+
+# trip starts compare to trip ends
+hubs_end <- biketown_2018 %>% 
+  group_by(EndHub) %>% 
+  summarize(lat = mean(EndLatitude),
+            lng = mean(EndLongitude),
+            ends = n())
+hubs_end_sf <- hubs_end %>% 
+  filter(!is.na(lat) & !is.na(lng)) %>%
+  st_as_sf(coords = c("lng", "lat"),
+           crs = 4326, agr = "constant")
+
+
+m_end <- mapview(hubs_end_sf, zcol = "ends", # if basemap doesn't show, open in browser
+        legend = FALSE, cex = "ends") # cex for relative sizing
+# maps side by side
+sync(m_start, m_end)
+
+# compare ratios for possibly more meaningful maps side by side
+hubs_ratio_sf <- inner_join(hubs_start_sf,
+                            hubs_end, # separate non spatial layer to ease join
+                            by = c("StartHub" = "EndHub")) %>% 
+  mutate(starts_to_ends = starts / ends,
+         ends_to_starts = ends / starts)
+
+m_s <- mapview(hubs_ratio_sf, zcol = "starts_to_ends",
+               legend = FALSE, cex = "starts_to_ends")
+m_e <- mapview(hubs_ratio_sf, zcol = "ends_to_starts",
+               legend = FALSE, cex = "ends_to_starts")
+sync(m_s, m_e)
+
+```
+
+```{r spatial joins}
+# spatial join of census data biketown data based on point of hub
+hubs_start_sf_p <- hubs_start_sf %>%
+  st_transform(2838)
+
+hubs_start_sf_p <- hubs_start_sf_p %>% 
+  sf::st_join(pdx_tracts_p) # default is left = T
+
+# see code posted on class website for info on filters
+```
+
+```{r saving data files}
+# two types of R data files
+# RDS retains structure and compresses file; but more for personal use, not great for sharing
+saveRDS(pdx_tracts_raw, "data/pdx_tracts_raw.rds")
+
+# to share, csv is more usable by others
+write.csv(biketown_2018, "data/biketown_2018.csv", row.names = F)
+
+```
+

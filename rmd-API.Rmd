@@ -1,0 +1,75 @@
+---
+title: "Intro to APIs"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# libraries for working with APIs; auto-installed with tidyverse
+library(httr)
+library(jsonlite)
+# needed for regular expressions below
+library(dplyr)
+
+```
+
+```{r call in data from API}
+# pulls in API data for use in this session but doesn't save anywhere
+# !! DO NOT COMMIT/push with API key !!
+appID <- "appID=insertAPIkeyhere" # API key in email; do not commit with key here in code
+baseurl <- "https://developer.trimet.org/ws/v2/arrivals" # avail on TriMet website
+locIDs <- "locIDs=5887,5889,5890,5892"
+
+call_1 <- paste(baseurl, "?",
+                locIDs, "&", # follow example call in API documentation
+                appID, sep = "")
+
+call_1
+
+```
+
+```{r make call}
+# make a get request
+get_arrivals <- GET(call_1)
+
+http_status(get_arrivals) # check status
+```
+
+```{r explore GET request}
+names(get_arrivals)
+headers(get_arrivals)
+
+parse_arrivals <- fromJSON(content(get_arrivals, "text"))
+results <- parse_arrivals[["resultSet"]] # taking list of list to get name
+arrivals <- results[["arrival"]] # data changes depending on when it is pulled
+head(arrivals)
+
+```
+
+most common functions for looking at strings/char searches and manipulation
+sub:provides an index of where the pattern occurs
+gsub: replaces all occurances of pattern (logical)
+grep: index of where pattern occurs
+grepl: replaces all occurances of pattern (logical)
+
+```{r intro to reguar expressions}
+# for if you can't really find what you're looking for
+# find all hubs tthat aren't community
+biketown_2018 %>% 
+  filter(!grepl("community", ignore.case = TRUE, StartHub))
+
+
+biketown_2018$StartHub <- as.character(biketown_2018$StartHub)
+
+# this is kind of a work around since we know stations have " "
+# if went back to how data was pulled in and improve stringsAsFactors to add arguements for NA
+# then can find Out of Location stations bc they will be "" as defined there
+biketown_stations <- biketown_2018 %>%
+  mutate(station.category = if_else(grepl("community", StartHub, ignore.case = TRUE), "Community Corral",
+                                          if_else(grepl(" ", StartHub), "Biketown Station", "Out of Location")))
+
+table(biketown_stations$station.category)
+
+```
+
